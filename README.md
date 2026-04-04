@@ -112,6 +112,7 @@ Those print at 10x10mm (300dpi).
 Those can be also printed larger or smaller depending on your camera setup.
 I put them on the back of the sheet as the front of the sheet is too bright on my camera.
 The location in the picture does not matter.
+It is recommended to print this on temperature resistent material (i.e white PET stickers with a laser printer).
 
 ### Limitations
 
@@ -122,6 +123,10 @@ The location in the picture does not matter.
 * We cannot show messages conditionally (i.e. show: "The sheet does not match").
 * We cannot send conditional messages to Prusa Connect (i.e. send a push or move the printer to ATTENTION state when the sheet does not match)
 
+### TODOs
+
+* [ ] Test on more printers
+* [ ] Dockerfile + github actions
 
 ### Possible future work
 
