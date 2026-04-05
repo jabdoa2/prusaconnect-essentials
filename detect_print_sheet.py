@@ -8,6 +8,8 @@ import time
 import pybgcode
 import tempfile
 import os
+import datetime
+import email.utils
 from typing import Tuple
 from pybgcode import EResult
 
@@ -17,6 +19,8 @@ MAX_AXIS_Z_FOR_NEW_JOB = 10
 INTERVAL_WAIT_FOR_JOB_START = 5
 DETECTION_Z = 100
 MINIMUM_APRILTAG_DECISION_MARGIN = 50
+
+USE_RTSP = True
 
 
 def convert_bgcode(file_in, file_out):
@@ -31,6 +35,54 @@ def convert_bgcode(file_in, file_out):
 
     res = pybgcode.from_binary_to_ascii(in_f, out_f, True)
     assert res == EResult.Success
+
+
+def download_rtsp_frame(camera: dict) -> cv2.typing.MatLike | None:
+    if not USE_RTSP:
+        return None
+
+    wifi_ip = camera.get("config", {}).get("network_info", {}).get("wifi_ipv4")
+    if not wifi_ip:
+        print("Could not get wifi ip of camera.")
+        return None
+
+    rtsp_url = f"rtsp://{wifi_ip}/live"
+    print(f"Will get Frame from {rtsp_url}")
+    cap = cv2.VideoCapture(rtsp_url)
+    ret, frame = cap.read()
+    if not ret:
+        print("Failed to get RTSP frame")
+        return None
+    cap.release()
+    return frame
+
+
+def download_prusa_connect_frame(
+    client: PrusaConnectClient, camera: dict
+) -> cv2.typing.MatLike | None:
+    print("Downloading snapshot from PrusaConnect")
+    # use raw call to get image age as well
+    response = client.api_request(
+        "GET", f"/app/cameras/{camera['id']}/snapshots/last", raw=True
+    )
+    image_data = response.content
+    image_taken = email.utils.parsedate_to_datetime(response.headers["last-modified"])
+    image_age = (
+        datetime.datetime.now(datetime.timezone(datetime.timedelta(seconds=0)))
+        - image_taken
+    )
+    if image_age > datetime.timedelta(seconds=30):
+        print(
+            f"Snapshot is too old ({image_age}). Make sure your camera is working properly."
+        )
+        return None
+    if False:
+        with open("snapshot.jpg", "wb") as f:
+            f.write(image_data)
+
+    nparr = np.frombuffer(image_data, np.uint8)
+    img = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
+    return img
 
 
 def parse_allowed_build_plate_values(gcode_str) -> list[int]:
@@ -113,17 +165,18 @@ def wait_for_new_job(
         time.sleep(INTERVAL_SECONDS_WAIT_FOR_JOB)
 
 
-def detect_sheet(img) -> list[apriltag.Detection]:
+def detect_sheet(img: cv2.typing.MatLike) -> list[apriltag.Detection]:
+    gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
     options = apriltag.DetectorOptions(families="tag16h5")
     detector = apriltag.Detector(options)
-    results = detector.detect(img)
+    results = detector.detect(gray)
     return results
 
 
 def handle_job(
     client: PrusaConnectClient,
     printer_id: str,
-    camera_id: str,
+    camera: dict,
     allowed_sheets: list[int],
     job_id: int,
 ) -> bool:
@@ -168,18 +221,15 @@ def handle_job(
         dialog_id = int(dialog_info["id"])
         button_action = "Resume"
 
-        print("Taking snapshot from camera...")
+        img = download_rtsp_frame(camera)
+        if img is None:
+            img = download_prusa_connect_frame(client, camera)
 
-        image_data = client.get_snapshot(camera_id)
-        if False:
-            with open("snapshot.jpg", "wb") as f:
-                f.write(image_data)
+        if img is None:
+            print("Could not load image. Will retry!")
+            continue
 
-        nparr = np.frombuffer(image_data, np.uint8)
-        img = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
-        gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)  # ty: ignore[no-matching-overload]
-
-        results = detect_sheet(gray)
+        results = detect_sheet(img)
         valid_results = [
             result
             for result in results
@@ -237,9 +287,9 @@ def main(printer_id: str):
             "Could not find any cameras for your printer. Please add one!"
         )
 
-    camera_id = cameras["cameras"][0]["id"]
+    camera = cameras["cameras"][0]
     print(
-        f"Will use camera your first camera {cameras['cameras'][0]['name']} with id: {camera_id}."
+        f"Will use camera your first camera {cameras['cameras'][0]['name']} with id: {camera['id']}."
     )
 
     while True:
@@ -248,7 +298,7 @@ def main(printer_id: str):
             f"Found new job {job_info.display_name} (ID {job_info.id}) on printer. Allowed sheets are: {allowed_sheets}"
         )
         assert job_info.id is not None
-        handle_job(client, printer_id, camera_id, allowed_sheets, job_info.id)
+        handle_job(client, printer_id, camera, allowed_sheets, job_info.id)
 
 
 if __name__ == "__main__":

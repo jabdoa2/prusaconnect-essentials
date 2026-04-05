@@ -31,6 +31,7 @@ See it in action:
 - Detects AprilTag markers using a connected camera.
 - Resumes prints only if the detected tag matches the allowed sheet ID.
 - You can manually continue the print in PrusaConnect or at the printer (i.e. if you applied glue to a otherwise not supported sheet)
+- Camera images are fetched locally via RTSP (if possible) or alternatively downloaded from PrusaConnect
 
 ### Requirements
 
@@ -123,19 +124,19 @@ It is recommended to print this on temperature resistent material (i.e white PET
 
 * Tested on Prusa Core One (let me know if it works on other printers)
 * There currently seems no way to push a better message to Prusa Connect (M117 does not work on xBuddy and the message of M0 is lost)
-* There is a delay of up to 10s due to the snapshot interval
+* There is a delay of up to 10s due to the snapshot interval if you get them from PrusaConnect. Does not apply when they can be fetched via RTSP locally.
 * We cannot move the bed down conditionally (i.e. only if the bed does not match)
 * We cannot show messages conditionally (i.e. show: "The sheet does not match").
 * We cannot send conditional messages to Prusa Connect (i.e. send a push or move the printer to ATTENTION state when the sheet does not match)
 
 ### TODOs
 
+* [x] Local camera feed via RTSP for lower latency
 * [ ] Test on more printers
 * [ ] Dockerfile + github actions
 
 ### Possible future work
 
-* [ ] Local camera feed via RTSP for lower latency
 * [ ] Some way to send notifications to Prusa Connect
 * [ ] Cancel prints instead of keeping them paused
 * [ ] Support PrusaLink (M0 probably won't work here)
