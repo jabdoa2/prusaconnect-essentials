@@ -18,6 +18,11 @@ You can locally overwrite the detection (press resume on the LCD) or click on Pr
 ![Prusa Connect during detection](/assets/prusa_connect_detecting.png)
 
 
+See it in action:
+
+[![Video of Build Plate Checker in Action](https://img.youtube.com/vi/M97IrtwM2IE/0.jpg)](https://www.youtube.com/watch?v=M97IrtwM2IE )
+
+
 ### Features
 
 - Monitors a PrusaConnect printer for new jobs.
