@@ -234,7 +234,7 @@ def handle_job(
             result
             for result in results
             if result.decision_margin > MINIMUM_APRILTAG_DECISION_MARGIN
-            and result.hamming == 1
+            and result.hamming <= 1
         ]
         if not valid_results:
             print(results)
