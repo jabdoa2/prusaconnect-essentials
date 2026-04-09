@@ -4,14 +4,13 @@ import cv2
 import numpy as np
 import sys
 import time
-import pybgcode
 import tempfile
 import os
 import datetime
 import email.utils
 from typing import Tuple
-from pybgcode import EResult
 
+from lib.gcode_handling import convert_bgcode, parse_allowed_build_plate_values
 from lib.tag_detection import identify_sheet_id
 
 INTERVAL_SECONDS_WAIT_FOR_JOB = 10
@@ -21,20 +20,6 @@ INTERVAL_WAIT_FOR_JOB_START = 5
 DETECTION_Z = 100
 
 USE_RTSP = True
-
-
-def convert_bgcode(file_in, file_out):
-    in_f = pybgcode.open(file_in, "rb")
-    out_f = pybgcode.open(file_out, "w")
-
-    assert in_f
-    assert out_f
-
-    assert pybgcode.is_open(in_f)
-    assert pybgcode.is_open(out_f)
-
-    res = pybgcode.from_binary_to_ascii(in_f, out_f, True)
-    assert res == EResult.Success
 
 
 def download_rtsp_frame(camera: dict) -> cv2.typing.MatLike | None:
@@ -83,39 +68,6 @@ def download_prusa_connect_frame(
     nparr = np.frombuffer(image_data, np.uint8)
     img = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
     return img
-
-
-def parse_allowed_build_plate_values(gcode_str) -> list[int]:
-    search_string = "; allowed_build_plates="
-
-    allowed_build_plate_lines = [
-        line for line in gcode_str.split("\n") if line.startswith(search_string)
-    ]
-    if not allowed_build_plate_lines:
-        print(
-            "WARNING: Did not find any allowed_build_plates lines in gcode. Will assume nothing is allowed."
-        )
-        return []
-
-    if len(allowed_build_plate_lines) > 1:
-        print(
-            "WARNING: Found more than one allowed_build_plates lines. Will use first line."
-        )
-
-    allowed_build_plate_str_values = allowed_build_plate_lines[0][
-        len(search_string) :
-    ].split(",")
-    try:
-        allowed_build_plate_values = [
-            int(value) for value in allowed_build_plate_str_values
-        ]
-    except ValueError:
-        print(
-            f"Failed to parse allowed_build_plates values to int: {allowed_build_plate_str_values}"
-        )
-        return []
-
-    return allowed_build_plate_values
 
 
 def wait_for_new_job(
@@ -224,12 +176,15 @@ def handle_job(
         tag_id = identify_sheet_id(img)
         if tag_id in allowed_sheets:
             print(
-                f"Correct sheet for for material found (ID: {tag_id}. Resuming print!"
+                f"Correct sheet for for material found (ID: {tag_id}). Resuming print!"
             )
-            params = {"command": "DIALOG_ACTION", "kwargs": {
-                "button": button_action,
-                "dialog_id": dialog_id,
-            }}
+            params = {
+                "command": "DIALOG_ACTION",
+                "kwargs": {
+                    "button": button_action,
+                    "dialog_id": dialog_id,
+                },
+            }
             print(f"/app/printers/{printer_id}/commands/sync")
             print(params)
             client.api_request(
@@ -240,6 +195,7 @@ def handle_job(
         else:
             print("Wrong plate for material. Not continuing print.")
             return False
+    return False
 
 
 def main(printer_id: str):
