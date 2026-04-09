@@ -1,6 +1,5 @@
 from prusa.connect.client import PrusaConnectClient
 from prusa.connect.client.models import PrinterState, JobInfo
-import apriltag
 import cv2
 import numpy as np
 import sys
@@ -13,12 +12,13 @@ import email.utils
 from typing import Tuple
 from pybgcode import EResult
 
+from lib.tag_detection import identify_sheet_id
+
 INTERVAL_SECONDS_WAIT_FOR_JOB = 10
 MAX_AXIS_Z_FOR_NEW_JOB = 10
 
 INTERVAL_WAIT_FOR_JOB_START = 5
 DETECTION_Z = 100
-MINIMUM_APRILTAG_DECISION_MARGIN = 50
 
 USE_RTSP = True
 
@@ -165,14 +165,6 @@ def wait_for_new_job(
         time.sleep(INTERVAL_SECONDS_WAIT_FOR_JOB)
 
 
-def detect_sheet(img: cv2.typing.MatLike) -> list[apriltag.Detection]:
-    gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-    options = apriltag.DetectorOptions(families="tag16h5")
-    detector = apriltag.Detector(options)
-    results = detector.detect(gray)
-    return results
-
-
 def handle_job(
     client: PrusaConnectClient,
     printer_id: str,
@@ -229,38 +221,15 @@ def handle_job(
             print("Could not load image. Will retry!")
             continue
 
-        results = detect_sheet(img)
-        valid_results = [
-            result
-            for result in results
-            if result.decision_margin > MINIMUM_APRILTAG_DECISION_MARGIN
-            and result.hamming <= 1
-        ]
-        if not valid_results:
-            print(results)
+        tag_id = identify_sheet_id(img)
+        if tag_id in allowed_sheets:
             print(
-                f"No valid code found. Found {len(results)} uncertain tags. Skipping!"
+                f"Correct sheet for for material found (ID: {tag_id}. Resuming print!"
             )
-            continue
-        if len(valid_results) > 1:
-            print(results)
-            print(
-                f"Found {len(valid_results)} codes. Make sure that there is only one. Skipping!"
-            )
-            continue
-        if len(valid_results) == 1:
-            tag_found = valid_results[0]
-
-        if tag_found.tag_id in allowed_sheets:
-            print(
-                f"Correct sheet for for material found (ID: {tag_found.tag_id} decision_margin={tag_found.decision_margin}). Resuming print!"
-            )
-            params = {}
-            params["command"] = "DIALOG_ACTION"
-            params["kwargs"] = {
+            params = {"command": "DIALOG_ACTION", "kwargs": {
                 "button": button_action,
                 "dialog_id": dialog_id,
-            }
+            }}
             print(f"/app/printers/{printer_id}/commands/sync")
             print(params)
             client.api_request(
@@ -269,10 +238,8 @@ def handle_job(
             time.sleep(30)
             return True
         else:
-            print(
-                f"Found exactly one code with ID {tag_found.tag_id} with decision_margin={tag_found.decision_margin} (higher is better)"
-            )
             print("Wrong plate for material. Not continuing print.")
+            return False
 
 
 def main(printer_id: str):
