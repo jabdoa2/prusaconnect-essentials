@@ -149,9 +149,9 @@ def handle_job(
         if not isinstance(sdpos, int):
             print("ERROR: sdpos needs to be int. Will wait for a working metric.")
             continue
-        if not isinstance(is_printing, bool):
+        if not isinstance(is_printing, int):
             print(
-                "ERROR: is_printing needs to be bool. Will wait for a working metric."
+                "ERROR: is_printing needs to be int. Will wait for a working metric."
             )
             continue
         if not isinstance(print_filename, str):
