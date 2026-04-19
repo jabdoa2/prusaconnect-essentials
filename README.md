@@ -105,13 +105,12 @@ M0 Check for correct build plate (Textured, Smooth PEI, Satin, PP)
 ; PCE-WAIT: check_build_plate(allowed_build_plates=(4,), check_empty=True)
 M0 Check for correct build plate (PP)
 {elsif filament_type[0] =~ /.*(FLEX).*/}
-; PCE: check_build_plate(allowed_build_plates=(0, 4), check_empty=True)
+; PCE-WAIT: check_build_plate(allowed_build_plates=(0, 4), check_empty=True)
 M0 Check for correct build plate (Textured, PP)
 {elsif filament_type[0] =~ /.*(PVB).*/}
-; PCE: check_build_plate(allowed_build_plates=(1, 2, 4), check_empty=True)
+; PCE-WAIT: check_build_plate(allowed_build_plates=(1, 2, 4), check_empty=True)
 M0 Check for correct build plate (Smooth PEI, Satin, PP)
 {else}
-; allowed_build_plates=None
 M0 Check for correct build plate manually!
 {endif}
 ; End build plate check
