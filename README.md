@@ -283,13 +283,14 @@ In your G-code, you simply call your custom logic:
 M0 Waiting for ventilation to open...
 ```
 
-### The Roadmap for Extensibility
+## Roadmap
 
 We are actively working on making the project even more flexible:
 
 * [ ] **Dynamic Hook Loading:** Hooks for other python modules to automatically register new `PCE` commands.
 * [ ] **MQTT Support:** Native support for broadcasting printer states to MQTT brokers for easy dashboarding.
 * [ ] **Webhooks:** Trigger generic HTTP POST requests without writing a single line of Python.
+* [ ] **Spaghetti Detection:** Add a handler which runs the Obico/Spaghetti Detector model. The model seems to be available on the net.
 
 ## Possible future work
 
