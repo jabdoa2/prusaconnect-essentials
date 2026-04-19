@@ -3,16 +3,20 @@ name = "prusa-connect-essentials"
 version = "0.1.0"
 description = "Adds the missing bits to Prusa Connect"
 readme = "README.md"
-requires-python = ">=3.14,<3.15"
+requires-python = ">=3.12,<3.13"
 dependencies = [
     "apriltag>=0.0.16",
+    "matplotlib>=3.10.8",
     "opencv-python>=4.13.0.92",
+    "platformdirs>=4.9.4",
     "prusa-connect-sdk-client[cli]>=1.0.0",
     "pybgcode-jneilliii>=0.2.1",
+    "tensorflow>=2.21.0",
 ]
 
 [dependency-groups]
 dev = [
+    "pytest>=9.0.3",
     "ruff>=0.15.9",
     "ty>=0.0.28",
 ]

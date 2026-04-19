@@ -1,16 +1,16 @@
 from prusa.connect.client import PrusaConnectClient
-from prusa.connect.client.models import PrinterState, JobInfo
-import cv2
-import numpy as np
+from prusa.connect.client.models import PrinterState, JobInfo, Camera
 import sys
 import time
-import tempfile
-import os
-import datetime
-import email.utils
 from typing import Tuple
 
-from lib.gcode_handling import convert_bgcode, parse_allowed_build_plate_values
+from lib.direct_camera import download_rtsp_frame
+from lib.gcode_handling import parse_allowed_build_plate_values, convert_bgcode_to_gcode
+from lib.prusa_connect import (
+    get_camera_config,
+    download_prusa_connect_frame,
+    press_dialog_button,
+)
 from lib.tag_detection import identify_sheet_id
 
 INTERVAL_SECONDS_WAIT_FOR_JOB = 10
@@ -20,54 +20,6 @@ INTERVAL_WAIT_FOR_JOB_START = 5
 DETECTION_Z = 100
 
 USE_RTSP = True
-
-
-def download_rtsp_frame(camera: dict) -> cv2.typing.MatLike | None:
-    if not USE_RTSP:
-        return None
-
-    wifi_ip = camera.get("config", {}).get("network_info", {}).get("wifi_ipv4")
-    if not wifi_ip:
-        print("Could not get wifi ip of camera.")
-        return None
-
-    rtsp_url = f"rtsp://{wifi_ip}/live"
-    print(f"Will get Frame from {rtsp_url}")
-    cap = cv2.VideoCapture(rtsp_url)
-    ret, frame = cap.read()
-    if not ret:
-        print("Failed to get RTSP frame")
-        return None
-    cap.release()
-    return frame
-
-
-def download_prusa_connect_frame(
-    client: PrusaConnectClient, camera: dict
-) -> cv2.typing.MatLike | None:
-    print("Downloading snapshot from PrusaConnect")
-    # use raw call to get image age as well
-    response = client.api_request(
-        "GET", f"/app/cameras/{camera['id']}/snapshots/last", raw=True
-    )
-    image_data = response.content
-    image_taken = email.utils.parsedate_to_datetime(response.headers["last-modified"])
-    image_age = (
-        datetime.datetime.now(datetime.timezone(datetime.timedelta(seconds=0)))
-        - image_taken
-    )
-    if image_age > datetime.timedelta(seconds=30):
-        print(
-            f"Snapshot is too old ({image_age}). Make sure your camera is working properly."
-        )
-        return None
-    if False:
-        with open("snapshot.jpg", "wb") as f:
-            f.write(image_data)
-
-    nparr = np.frombuffer(image_data, np.uint8)
-    img = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
-    return img
 
 
 def wait_for_new_job(
@@ -98,17 +50,7 @@ def wait_for_new_job(
             if printer.job.display_name and printer.job.display_name.lower().endswith(
                 ".bgcode"
             ):
-                with tempfile.TemporaryDirectory() as tmpdirname:
-                    with open(os.path.join(tmpdirname, "job.bgcode"), "wb") as f:
-                        f.write(bgcode_bytes)
-
-                    convert_bgcode(
-                        os.path.join(tmpdirname, "job.bgcode"),
-                        os.path.join(tmpdirname, "job.gcode"),
-                    )
-
-                    with open(os.path.join(tmpdirname, "job.gcode"), "r") as f:
-                        gcode = f.read()
+                gcode = convert_bgcode_to_gcode(bgcode_bytes)
             else:
                 gcode = bgcode_bytes.decode()
 
@@ -120,7 +62,7 @@ def wait_for_new_job(
 def handle_job(
     client: PrusaConnectClient,
     printer_id: str,
-    camera: dict,
+    camera: Camera,
     allowed_sheets: list[int],
     job_id: int,
 ) -> bool:
@@ -165,9 +107,12 @@ def handle_job(
         dialog_id = int(dialog_info["id"])
         button_action = "Resume"
 
-        img = download_rtsp_frame(camera)
+        if USE_RTSP:
+            img = download_rtsp_frame(camera)
+        else:
+            img = None
         if img is None:
-            img = download_prusa_connect_frame(client, camera)
+            img = download_prusa_connect_frame(client, camera, 30)
 
         if img is None:
             print("Could not load image. Will retry!")
@@ -178,18 +123,7 @@ def handle_job(
             print(
                 f"Correct sheet for for material found (ID: {tag_id}). Resuming print!"
             )
-            params = {
-                "command": "DIALOG_ACTION",
-                "kwargs": {
-                    "button": button_action,
-                    "dialog_id": dialog_id,
-                },
-            }
-            print(f"/app/printers/{printer_id}/commands/sync")
-            print(params)
-            client.api_request(
-                "POST", f"/app/printers/{printer_id}/commands/sync", json=params
-            )
+            press_dialog_button(client, printer_id, dialog_id, button_action)
             time.sleep(30)
             return True
         else:
@@ -202,18 +136,11 @@ def main(printer_id: str):
     # Credentials are automatically loaded from your environment or default local file
     client = PrusaConnectClient()
 
-    # find camera
-    cameras = client.api_request("GET", f"/app/printers/{printer_id}/cameras")
-
-    if not cameras["cameras"]:
+    camera = get_camera_config(client, printer_id)
+    if not camera:
         raise AssertionError(
             "Could not find any cameras for your printer. Please add one!"
         )
-
-    camera = cameras["cameras"][0]
-    print(
-        f"Will use camera your first camera {cameras['cameras'][0]['name']} with id: {camera['id']}."
-    )
 
     while True:
         allowed_sheets, job_info = wait_for_new_job(client, printer_id)
